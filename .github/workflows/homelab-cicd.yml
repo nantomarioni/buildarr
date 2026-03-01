@@ -3,7 +3,7 @@ name: Homelab - Build & Deploy
 on:
   push:
     branches:
-      - fork-v7
+      - fork
 
 env:
   REGISTRY: ghcr.io
