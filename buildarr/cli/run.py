@@ -22,7 +22,7 @@ from __future__ import annotations
 from logging import getLogger
 from pathlib import Path
 from textwrap import indent
-from typing import Dict, Optional, Set, cast
+from typing import Dict, List, Optional, Set, Tuple, cast
 
 import click
 
@@ -224,37 +224,51 @@ def _run(use_plugins: Optional[Set[str]] = None) -> None:
     post_init_render()
     logger.info("Finished performing post-initialisation configuration render")
 
+    # Collect errors from all instances so we can continue processing
+    # even if individual instances fail, then report all failures at the end.
+    instance_errors: List[Tuple[str, str, Exception]] = []
+
     # Update all instances in the determined execution order.
     logger.info("Updating configuration on remote instances")
     for plugin_name, instance_name in state._execution_order:
         manager = state.managers[plugin_name]
         instance_config = state.instance_configs[plugin_name][instance_name]
         with state._with_context(plugin_name=plugin_name, instance_name=instance_name):
-            instance_secrets = state.instance_secrets[plugin_name][instance_name]
-            logger.info("Fetching remote configuration to check if updates are required")
-            remote_instance_config = manager.from_remote(instance_config, instance_secrets)
-            logger.info("Finished fetching remote configuration")
-            for config_type, config in (
-                ("Local", instance_config),
-                ("Remote", remote_instance_config),
-            ):
-                logger.debug("%s configuration:", config_type)
-                for config_line in config.yaml(exclude_unset=True).splitlines():
-                    logger.debug(indent(config_line, "  "))
-            logger.info("Updating remote configuration")
-            logger.info(
-                (
-                    "Remote configuration successfully updated"
-                    if manager.update_remote(
-                        plugin_name,
-                        instance_config,
-                        instance_secrets,
-                        remote_instance_config,
-                    )
-                    else "Remote configuration is up to date"
-                ),
-            )
-            logger.info("Finished updating remote configuration")
+            try:
+                instance_secrets = state.instance_secrets[plugin_name][instance_name]
+                logger.info("Fetching remote configuration to check if updates are required")
+                remote_instance_config = manager.from_remote(instance_config, instance_secrets)
+                logger.info("Finished fetching remote configuration")
+                for config_type, config in (
+                    ("Local", instance_config),
+                    ("Remote", remote_instance_config),
+                ):
+                    logger.debug("%s configuration:", config_type)
+                    for config_line in config.yaml(exclude_unset=True).splitlines():
+                        logger.debug(indent(config_line, "  "))
+                logger.info("Updating remote configuration")
+                logger.info(
+                    (
+                        "Remote configuration successfully updated"
+                        if manager.update_remote(
+                            plugin_name,
+                            instance_config,
+                            instance_secrets,
+                            remote_instance_config,
+                        )
+                        else "Remote configuration is up to date"
+                    ),
+                )
+                logger.info("Finished updating remote configuration")
+            except Exception as err:
+                logger.error(
+                    "Failed to update instance '%s.%s': %s",
+                    plugin_name,
+                    instance_name,
+                    err,
+                    exc_info=True,
+                )
+                instance_errors.append((plugin_name, instance_name, err))
     logger.info("Finished updating configuration on remote instances")
 
     # After all configuration and resources have been created/updated on
@@ -268,31 +282,41 @@ def _run(use_plugins: Optional[Set[str]] = None) -> None:
         manager = state.managers[plugin_name]
         instance_config = state.instance_configs[plugin_name][instance_name]
         with state._with_context(plugin_name=plugin_name, instance_name=instance_name):
-            instance_secrets = state.instance_secrets[plugin_name][instance_name]
-            logger.info("Refetching remote configuration to delete unused resources")
-            remote_instance_config = manager.from_remote(instance_config, instance_secrets)
-            logger.info("Finished refetching remote configuration")
-            for config_type, config in (
-                ("Local", instance_config),
-                ("Remote", remote_instance_config),
-            ):
-                logger.debug("%s configuration:", config_type)
-                for config_line in config.yaml(exclude_unset=True).splitlines():
-                    logger.debug(indent(config_line, "  "))
-            logger.info("Deleting unmanaged/unused resources on the remote instance")
-            logger.info(
-                (
-                    "Unused resources successfully deleted"
-                    if manager.delete_remote(
-                        plugin_name,
-                        instance_config,
-                        instance_secrets,
-                        remote_instance_config,
-                    )
-                    else "Remote configuration is clean"
-                ),
-            )
-            logger.info("Finished deleting unmanaged/unused resources on the remote instance")
+            try:
+                instance_secrets = state.instance_secrets[plugin_name][instance_name]
+                logger.info("Refetching remote configuration to delete unused resources")
+                remote_instance_config = manager.from_remote(instance_config, instance_secrets)
+                logger.info("Finished refetching remote configuration")
+                for config_type, config in (
+                    ("Local", instance_config),
+                    ("Remote", remote_instance_config),
+                ):
+                    logger.debug("%s configuration:", config_type)
+                    for config_line in config.yaml(exclude_unset=True).splitlines():
+                        logger.debug(indent(config_line, "  "))
+                logger.info("Deleting unmanaged/unused resources on the remote instance")
+                logger.info(
+                    (
+                        "Unused resources successfully deleted"
+                        if manager.delete_remote(
+                            plugin_name,
+                            instance_config,
+                            instance_secrets,
+                            remote_instance_config,
+                        )
+                        else "Remote configuration is clean"
+                    ),
+                )
+                logger.info("Finished deleting unmanaged/unused resources on the remote instance")
+            except Exception as err:
+                logger.error(
+                    "Failed to delete unmanaged resources for instance '%s.%s': %s",
+                    plugin_name,
+                    instance_name,
+                    err,
+                    exc_info=True,
+                )
+                instance_errors.append((plugin_name, instance_name, err))
     logger.info("Finished deleting unmanaged/unused resources on remote instances")
 
     # Cleanup downloaded TRaSH-Metadata, if it was required by any instances.
@@ -300,3 +324,17 @@ def _run(use_plugins: Optional[Set[str]] = None) -> None:
         logger.info("Deleting downloaded TRaSH metadata")
         cleanup_trash_metadata()
         logger.info("Finished deleting downloaded TRaSH metadata")
+
+    # If any instance errors were collected, log a summary and raise
+    # so the process exits non-zero (pod shows unhealthy).
+    if instance_errors:
+        logger.error(
+            "Buildarr run completed with %d error(s) across the following instances:",
+            len(instance_errors),
+        )
+        for plugin_name, instance_name, err in instance_errors:
+            logger.error("  - %s.%s: %s", plugin_name, instance_name, err)
+        raise RuntimeError(
+            f"Buildarr run completed with {len(instance_errors)} instance error(s). "
+            "Check logs above for details.",
+        )

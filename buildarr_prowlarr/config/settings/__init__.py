@@ -23,6 +23,8 @@ from typing import TYPE_CHECKING
 
 from typing_extensions import Self
 
+from buildarr.config.resilience import resilient_update_sections
+
 from ..types import ProwlarrConfigBase
 from .apps import ProwlarrAppsSettings
 from .download_clients import ProwlarrDownloadClientsSettings
@@ -59,49 +61,57 @@ class ProwlarrSettings(ProwlarrConfigBase):
         # Overload base function to guarantee execution order of section updates.
         # 1. Tags must be created before everything else.
         # 2. Apps/Sync Profiles must be created before Indexers.
-        return any(
+        # Each section is isolated so a failure in one does not block the others.
+        return resilient_update_sections(
             [
-                self.tags.update_remote(
+                (
                     f"{tree}.tags",
-                    secrets,
-                    remote.tags,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.tags.update_remote(
+                        f"{tree}.tags", secrets, remote.tags,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.apps.update_remote(
+                (
                     f"{tree}.apps",
-                    secrets,
-                    remote.apps,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.apps.update_remote(
+                        f"{tree}.apps", secrets, remote.apps,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.indexers.update_remote(
+                (
                     f"{tree}.indexers",
-                    secrets,
-                    remote.indexers,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.indexers.update_remote(
+                        f"{tree}.indexers", secrets, remote.indexers,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.download_clients.update_remote(
+                (
                     f"{tree}.download_clients",
-                    secrets,
-                    remote.download_clients,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.download_clients.update_remote(
+                        f"{tree}.download_clients", secrets, remote.download_clients,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.notifications.update_remote(
+                (
                     f"{tree}.notifications",
-                    secrets,
-                    remote.notifications,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.notifications.update_remote(
+                        f"{tree}.notifications", secrets, remote.notifications,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.general.update_remote(
+                (
                     f"{tree}.general",
-                    secrets,
-                    remote.general,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.general.update_remote(
+                        f"{tree}.general", secrets, remote.general,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.ui.update_remote(
+                (
                     f"{tree}.ui",
-                    secrets,
-                    remote.ui,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.ui.update_remote(
+                        f"{tree}.ui", secrets, remote.ui,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
             ],
         )
@@ -109,22 +119,50 @@ class ProwlarrSettings(ProwlarrConfigBase):
     def delete_remote(self, tree: str, secrets: ProwlarrSecrets, remote: Self) -> bool:
         # Overload base function to guarantee execution order of section deletions.
         # 1. Indexers must be deleted before Apps/Sync Profiles.
-        return any(
+        # Each section is isolated so a failure in one does not block the others.
+        return resilient_update_sections(
             [
-                self.indexers.delete_remote(f"{tree}.indexers", secrets, remote.indexers),
-                self.apps.delete_remote(f"{tree}.apps", secrets, remote.apps),
-                self.download_clients.delete_remote(
+                (
+                    f"{tree}.indexers",
+                    lambda: self.indexers.delete_remote(
+                        f"{tree}.indexers", secrets, remote.indexers,
+                    ),
+                ),
+                (
+                    f"{tree}.apps",
+                    lambda: self.apps.delete_remote(
+                        f"{tree}.apps", secrets, remote.apps,
+                    ),
+                ),
+                (
                     f"{tree}.download_clients",
-                    secrets,
-                    remote.download_clients,
+                    lambda: self.download_clients.delete_remote(
+                        f"{tree}.download_clients", secrets, remote.download_clients,
+                    ),
                 ),
-                self.notifications.delete_remote(
+                (
                     f"{tree}.notifications",
-                    secrets,
-                    remote.notifications,
+                    lambda: self.notifications.delete_remote(
+                        f"{tree}.notifications", secrets, remote.notifications,
+                    ),
                 ),
-                self.tags.delete_remote(f"{tree}.tags", secrets, remote.tags),
-                self.general.delete_remote(f"{tree}.general", secrets, remote.general),
-                self.ui.delete_remote(f"{tree}.ui", secrets, remote.ui),
+                (
+                    f"{tree}.tags",
+                    lambda: self.tags.delete_remote(
+                        f"{tree}.tags", secrets, remote.tags,
+                    ),
+                ),
+                (
+                    f"{tree}.general",
+                    lambda: self.general.delete_remote(
+                        f"{tree}.general", secrets, remote.general,
+                    ),
+                ),
+                (
+                    f"{tree}.ui",
+                    lambda: self.ui.delete_remote(
+                        f"{tree}.ui", secrets, remote.ui,
+                    ),
+                ),
             ],
         )

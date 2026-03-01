@@ -25,6 +25,7 @@ from .load import load_config, load_instance_configs
 from .models import ConfigPlugin, ConfigPluginType, ConfigType
 from .post_init_render import post_init_render
 from .render_instance_configs import render_instance_configs
+from .resilience import resilient_update_sections
 from .resolve_instance_dependencies import resolve_instance_dependencies
 from .types import RemoteMapEntry
 
@@ -39,6 +40,7 @@ __all__ = [
     "load_config",
     "load_instance_configs",
     "post_init_render",
+    "resilient_update_sections",
     "resolve_instance_dependencies",
     "render_instance_configs",
 ]

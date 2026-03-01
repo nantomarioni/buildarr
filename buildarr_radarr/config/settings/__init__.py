@@ -23,6 +23,8 @@ from typing import TYPE_CHECKING
 
 from typing_extensions import Self
 
+from buildarr.config.resilience import resilient_update_sections
+
 from ..types import RadarrConfigBase
 from .custom_formats import RadarrCustomFormatsSettings
 from .download_clients import RadarrDownloadClientsSettings
@@ -68,79 +70,96 @@ class RadarrSettings(RadarrConfigBase):
         # 1. Tags must be created before everything else.
         # 2. Qualities must be updated before quality profiles.
         # 3. Download clients must be created before indexers.
-        return any(
+        # Each section is isolated so a failure in one does not block the others.
+        return resilient_update_sections(
             [
-                self.tags.update_remote(
-                    tree=f"{tree}.tags",
-                    secrets=secrets,
-                    remote=remote.tags,
-                    check_unmanaged=check_unmanaged,
+                (
+                    f"{tree}.tags",
+                    lambda: self.tags.update_remote(
+                        tree=f"{tree}.tags", secrets=secrets, remote=remote.tags,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.quality.update_remote(
-                    tree=f"{tree}.quality",
-                    secrets=secrets,
-                    remote=remote.quality,
-                    check_unmanaged=check_unmanaged,
+                (
+                    f"{tree}.quality",
+                    lambda: self.quality.update_remote(
+                        tree=f"{tree}.quality", secrets=secrets, remote=remote.quality,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.custom_formats.update_remote(
-                    tree=f"{tree}.custom_formats",
-                    secrets=secrets,
-                    remote=remote.custom_formats,
-                    check_unmanaged=check_unmanaged,
+                (
+                    f"{tree}.custom_formats",
+                    lambda: self.custom_formats.update_remote(
+                        tree=f"{tree}.custom_formats", secrets=secrets,
+                        remote=remote.custom_formats,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.download_clients.update_remote(
-                    tree=f"{tree}.download_clients",
-                    secrets=secrets,
-                    remote=remote.download_clients,
-                    check_unmanaged=check_unmanaged,
+                (
+                    f"{tree}.download_clients",
+                    lambda: self.download_clients.update_remote(
+                        tree=f"{tree}.download_clients", secrets=secrets,
+                        remote=remote.download_clients,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.indexers.update_remote(
-                    tree=f"{tree}.indexers",
-                    secrets=secrets,
-                    remote=remote.indexers,
-                    check_unmanaged=check_unmanaged,
+                (
+                    f"{tree}.indexers",
+                    lambda: self.indexers.update_remote(
+                        tree=f"{tree}.indexers", secrets=secrets, remote=remote.indexers,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.media_management.update_remote(
-                    tree=f"{tree}.media_management",
-                    secrets=secrets,
-                    remote=remote.media_management,
-                    check_unmanaged=check_unmanaged,
+                (
+                    f"{tree}.media_management",
+                    lambda: self.media_management.update_remote(
+                        tree=f"{tree}.media_management", secrets=secrets,
+                        remote=remote.media_management,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.profiles.update_remote(
-                    tree=f"{tree}.profiles",
-                    secrets=secrets,
-                    remote=remote.profiles,
-                    check_unmanaged=check_unmanaged,
+                (
+                    f"{tree}.profiles",
+                    lambda: self.profiles.update_remote(
+                        tree=f"{tree}.profiles", secrets=secrets, remote=remote.profiles,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                # self.lists.update_remote(
-                #     tree=f"{tree}.lists",
-                #     secrets=secrets,
-                #     remote=remote.lists,
-                #     check_unmanaged=check_unmanaged,
+                # (
+                #     f"{tree}.lists",
+                #     lambda: self.lists.update_remote(
+                #         tree=f"{tree}.lists", secrets=secrets, remote=remote.lists,
+                #         check_unmanaged=check_unmanaged,
+                #     ),
                 # ),
-                self.notifications.update_remote(
-                    tree=f"{tree}.notifications",
-                    secrets=secrets,
-                    remote=remote.notifications,
-                    check_unmanaged=check_unmanaged,
+                (
+                    f"{tree}.notifications",
+                    lambda: self.notifications.update_remote(
+                        tree=f"{tree}.notifications", secrets=secrets,
+                        remote=remote.notifications,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.metadata.update_remote(
-                    tree=f"{tree}.metadata",
-                    secrets=secrets,
-                    remote=remote.metadata,
-                    check_unmanaged=check_unmanaged,
+                (
+                    f"{tree}.metadata",
+                    lambda: self.metadata.update_remote(
+                        tree=f"{tree}.metadata", secrets=secrets, remote=remote.metadata,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.general.update_remote(
-                    tree=f"{tree}.general",
-                    secrets=secrets,
-                    remote=remote.general,
-                    check_unmanaged=check_unmanaged,
+                (
+                    f"{tree}.general",
+                    lambda: self.general.update_remote(
+                        tree=f"{tree}.general", secrets=secrets, remote=remote.general,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.ui.update_remote(
-                    tree=f"{tree}.ui",
-                    secrets=secrets,
-                    remote=remote.ui,
-                    check_unmanaged=check_unmanaged,
+                (
+                    f"{tree}.ui",
+                    lambda: self.ui.update_remote(
+                        tree=f"{tree}.ui", secrets=secrets, remote=remote.ui,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
             ],
         )
@@ -148,39 +167,84 @@ class RadarrSettings(RadarrConfigBase):
     def delete_remote(self, tree: str, secrets: RadarrSecrets, remote: Self) -> bool:
         # Overload base function to guarantee execution order of section deletions.
         # 1. Indexers must be deleted before download clients.
-        return any(
+        # Each section is isolated so a failure in one does not block the others.
+        return resilient_update_sections(
             [
-                self.profiles.delete_remote(f"{tree}.profiles", secrets, remote.profiles),
-                self.indexers.delete_remote(f"{tree}.indexers", secrets, remote.indexers),
-                self.download_clients.delete_remote(
-                    tree=f"{tree}.download_clients",
-                    secrets=secrets,
-                    remote=remote.download_clients,
+                (
+                    f"{tree}.profiles",
+                    lambda: self.profiles.delete_remote(
+                        f"{tree}.profiles", secrets, remote.profiles,
+                    ),
                 ),
-                self.media_management.delete_remote(
-                    tree=f"{tree}.media_management",
-                    secrets=secrets,
-                    remote=remote.media_management,
+                (
+                    f"{tree}.indexers",
+                    lambda: self.indexers.delete_remote(
+                        f"{tree}.indexers", secrets, remote.indexers,
+                    ),
                 ),
-                # self.lists.delete_remote(
-                #     tree=f"{tree}.lists",
-                #     secrets=secrets,
-                #     remote=remote.lists,
+                (
+                    f"{tree}.download_clients",
+                    lambda: self.download_clients.delete_remote(
+                        tree=f"{tree}.download_clients", secrets=secrets,
+                        remote=remote.download_clients,
+                    ),
+                ),
+                (
+                    f"{tree}.media_management",
+                    lambda: self.media_management.delete_remote(
+                        tree=f"{tree}.media_management", secrets=secrets,
+                        remote=remote.media_management,
+                    ),
+                ),
+                # (
+                #     f"{tree}.lists",
+                #     lambda: self.lists.delete_remote(
+                #         tree=f"{tree}.lists", secrets=secrets, remote=remote.lists,
+                #     ),
                 # ),
-                self.notifications.delete_remote(
-                    tree=f"{tree}.notifications",
-                    secrets=secrets,
-                    remote=remote.notifications,
+                (
+                    f"{tree}.notifications",
+                    lambda: self.notifications.delete_remote(
+                        tree=f"{tree}.notifications", secrets=secrets,
+                        remote=remote.notifications,
+                    ),
                 ),
-                self.tags.delete_remote(f"{tree}.tags", secrets, remote.tags),
-                self.custom_formats.delete_remote(
-                    tree=f"{tree}.custom_formats",
-                    secrets=secrets,
-                    remote=remote.custom_formats,
+                (
+                    f"{tree}.tags",
+                    lambda: self.tags.delete_remote(
+                        f"{tree}.tags", secrets, remote.tags,
+                    ),
                 ),
-                self.quality.delete_remote(f"{tree}.quality", secrets, remote.quality),
-                self.metadata.delete_remote(f"{tree}.metadata", secrets, remote.metadata),
-                self.general.delete_remote(f"{tree}.general", secrets, remote.general),
-                self.ui.delete_remote(f"{tree}.ui", secrets, remote.ui),
+                (
+                    f"{tree}.custom_formats",
+                    lambda: self.custom_formats.delete_remote(
+                        tree=f"{tree}.custom_formats", secrets=secrets,
+                        remote=remote.custom_formats,
+                    ),
+                ),
+                (
+                    f"{tree}.quality",
+                    lambda: self.quality.delete_remote(
+                        f"{tree}.quality", secrets, remote.quality,
+                    ),
+                ),
+                (
+                    f"{tree}.metadata",
+                    lambda: self.metadata.delete_remote(
+                        f"{tree}.metadata", secrets, remote.metadata,
+                    ),
+                ),
+                (
+                    f"{tree}.general",
+                    lambda: self.general.delete_remote(
+                        f"{tree}.general", secrets, remote.general,
+                    ),
+                ),
+                (
+                    f"{tree}.ui",
+                    lambda: self.ui.delete_remote(
+                        f"{tree}.ui", secrets, remote.ui,
+                    ),
+                ),
             ],
         )

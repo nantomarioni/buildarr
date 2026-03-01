@@ -49,6 +49,7 @@ from typing_extensions import Self
 
 from ..plugins import Secrets
 from ..types import BaseEnum, ModelConfigBase
+from .resilience import resilient_update_sections
 from .types import RemoteMapEntry
 
 logger = getLogger(__name__)
@@ -269,13 +270,23 @@ class ConfigBase(BaseModel, Generic[Secrets]):
         """
         changed = False
         for field_name, field in self:
-            if isinstance(field, ConfigBase) and field.update_remote(
-                f"{tree}.{field_name}",
-                secrets,
-                getattr(remote, field_name),
-                check_unmanaged=check_unmanaged,
-            ):
-                changed = True
+            if isinstance(field, ConfigBase):
+                try:
+                    if field.update_remote(
+                        f"{tree}.{field_name}",
+                        secrets,
+                        getattr(remote, field_name),
+                        check_unmanaged=check_unmanaged,
+                    ):
+                        changed = True
+                except Exception:
+                    logger.error(
+                        "Failed to process section '%s.%s', skipping."
+                        " Will retry on next Buildarr run.",
+                        tree,
+                        field_name,
+                        exc_info=True,
+                    )
         return changed
 
     def get_create_remote_attrs(
@@ -662,12 +673,22 @@ class ConfigBase(BaseModel, Generic[Secrets]):
         """
         changed = False
         for field_name, field in self:
-            if isinstance(field, ConfigBase) and field.delete_remote(
-                f"{tree}.{field_name}",
-                secrets,
-                getattr(remote, field_name),
-            ):
-                changed = True
+            if isinstance(field, ConfigBase):
+                try:
+                    if field.delete_remote(
+                        f"{tree}.{field_name}",
+                        secrets,
+                        getattr(remote, field_name),
+                    ):
+                        changed = True
+                except Exception:
+                    logger.error(
+                        "Failed to process section '%s.%s' during deletion, skipping."
+                        " Will retry on next Buildarr run.",
+                        tree,
+                        field_name,
+                        exc_info=True,
+                    )
         return changed
 
     def log_delete_remote_attrs(

@@ -22,6 +22,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from buildarr.config import ConfigPlugin
+from buildarr.config.resilience import resilient_update_sections
 from buildarr.types import NonEmptyStr, Port
 from pydantic import validator
 from typing_extensions import Self
@@ -81,73 +82,85 @@ class SonarrSettingsConfig(SonarrConfigBase):
         # 2. Qualities must be updated before quality profiles.
         # 3. Download clients must be created before indexers.
         # 4. Indexers must be created before release profiles.
-        return any(
+        # Each section is isolated so a failure in one does not block the others.
+        return resilient_update_sections(
             [
-                self.tags.update_remote(
+                (
                     f"{tree}.tags",
-                    secrets,
-                    remote.tags,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.tags.update_remote(
+                        f"{tree}.tags", secrets, remote.tags,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.quality.update_remote(
+                (
                     f"{tree}.quality",
-                    secrets,
-                    remote.quality,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.quality.update_remote(
+                        f"{tree}.quality", secrets, remote.quality,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.download_clients.update_remote(
+                (
                     f"{tree}.download_clients",
-                    secrets,
-                    remote.download_clients,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.download_clients.update_remote(
+                        f"{tree}.download_clients", secrets, remote.download_clients,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.indexers.update_remote(
+                (
                     f"{tree}.indexers",
-                    secrets,
-                    remote.indexers,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.indexers.update_remote(
+                        f"{tree}.indexers", secrets, remote.indexers,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.media_management.update_remote(
+                (
                     f"{tree}.media_management",
-                    secrets,
-                    remote.media_management,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.media_management.update_remote(
+                        f"{tree}.media_management", secrets, remote.media_management,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.profiles.update_remote(
+                (
                     f"{tree}.profiles",
-                    secrets,
-                    remote.profiles,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.profiles.update_remote(
+                        f"{tree}.profiles", secrets, remote.profiles,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.import_lists.update_remote(
+                (
                     f"{tree}.import_lists",
-                    secrets,
-                    remote.import_lists,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.import_lists.update_remote(
+                        f"{tree}.import_lists", secrets, remote.import_lists,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.connect.update_remote(
+                (
                     f"{tree}.connect",
-                    secrets,
-                    remote.connect,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.connect.update_remote(
+                        f"{tree}.connect", secrets, remote.connect,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.metadata.update_remote(
+                (
                     f"{tree}.metadata",
-                    secrets,
-                    remote.metadata,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.metadata.update_remote(
+                        f"{tree}.metadata", secrets, remote.metadata,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.general.update_remote(
+                (
                     f"{tree}.general",
-                    secrets,
-                    remote.general,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.general.update_remote(
+                        f"{tree}.general", secrets, remote.general,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
-                self.ui.update_remote(
+                (
                     f"{tree}.ui",
-                    secrets,
-                    remote.ui,
-                    check_unmanaged=check_unmanaged,
+                    lambda: self.ui.update_remote(
+                        f"{tree}.ui", secrets, remote.ui,
+                        check_unmanaged=check_unmanaged,
+                    ),
                 ),
             ],
         )
@@ -156,31 +169,75 @@ class SonarrSettingsConfig(SonarrConfigBase):
         # Overload base function to guarantee execution order of section deletions.
         # 1. Release profiles must be deleted before indexers.
         # 2. Indexers must be deleted before download clients.
-        return any(
+        # Each section is isolated so a failure in one does not block the others.
+        return resilient_update_sections(
             [
-                self.profiles.delete_remote(f"{tree}.profiles", secrets, remote.profiles),
-                self.indexers.delete_remote(f"{tree}.indexers", secrets, remote.indexers),
-                self.download_clients.delete_remote(
+                (
+                    f"{tree}.profiles",
+                    lambda: self.profiles.delete_remote(
+                        f"{tree}.profiles", secrets, remote.profiles,
+                    ),
+                ),
+                (
+                    f"{tree}.indexers",
+                    lambda: self.indexers.delete_remote(
+                        f"{tree}.indexers", secrets, remote.indexers,
+                    ),
+                ),
+                (
                     f"{tree}.download_clients",
-                    secrets,
-                    remote.download_clients,
+                    lambda: self.download_clients.delete_remote(
+                        f"{tree}.download_clients", secrets, remote.download_clients,
+                    ),
                 ),
-                self.media_management.delete_remote(
+                (
                     f"{tree}.media_management",
-                    secrets,
-                    remote.media_management,
+                    lambda: self.media_management.delete_remote(
+                        f"{tree}.media_management", secrets, remote.media_management,
+                    ),
                 ),
-                self.import_lists.delete_remote(
+                (
                     f"{tree}.import_lists",
-                    secrets,
-                    remote.import_lists,
+                    lambda: self.import_lists.delete_remote(
+                        f"{tree}.import_lists", secrets, remote.import_lists,
+                    ),
                 ),
-                self.connect.delete_remote(f"{tree}.connect", secrets, remote.connect),
-                self.tags.delete_remote(f"{tree}.tags", secrets, remote.tags),
-                self.quality.delete_remote(f"{tree}.quality", secrets, remote.quality),
-                self.metadata.delete_remote(f"{tree}.metadata", secrets, remote.metadata),
-                self.general.delete_remote(f"{tree}.general", secrets, remote.general),
-                self.ui.delete_remote(f"{tree}.ui", secrets, remote.ui),
+                (
+                    f"{tree}.connect",
+                    lambda: self.connect.delete_remote(
+                        f"{tree}.connect", secrets, remote.connect,
+                    ),
+                ),
+                (
+                    f"{tree}.tags",
+                    lambda: self.tags.delete_remote(
+                        f"{tree}.tags", secrets, remote.tags,
+                    ),
+                ),
+                (
+                    f"{tree}.quality",
+                    lambda: self.quality.delete_remote(
+                        f"{tree}.quality", secrets, remote.quality,
+                    ),
+                ),
+                (
+                    f"{tree}.metadata",
+                    lambda: self.metadata.delete_remote(
+                        f"{tree}.metadata", secrets, remote.metadata,
+                    ),
+                ),
+                (
+                    f"{tree}.general",
+                    lambda: self.general.delete_remote(
+                        f"{tree}.general", secrets, remote.general,
+                    ),
+                ),
+                (
+                    f"{tree}.ui",
+                    lambda: self.ui.delete_remote(
+                        f"{tree}.ui", secrets, remote.ui,
+                    ),
+                ),
             ],
         )
 
