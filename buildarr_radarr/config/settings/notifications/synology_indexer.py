@@ -41,5 +41,5 @@ class SynologyIndexerNotification(Notification):
     Call `synoindex` on `localhost` to update library files.
     """
 
-    _implementation: str = "MediaBrowser"
+    _implementation: str = "SynologyIndexer"
     _remote_map: List[RemoteMapEntry] = [("update_library", "updateLibrary", {"is_field": True})]
