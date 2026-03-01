@@ -1672,12 +1672,12 @@ class WebhookConnection(Connection):
     * `PUT`
     """
 
-    username: NonEmptyStr
+    username: Optional[str] = None
     """
     Webhook API username.
     """
 
-    password: Password
+    password: Optional[SecretStr] = None
     """
     Webhook API password.
     """
@@ -1688,8 +1688,20 @@ class WebhookConnection(Connection):
     _remote_map: List[RemoteMapEntry] = [
         ("url", "url", {"is_field": True}),
         ("method", "method", {"is_field": True}),
-        ("username", "username", {"is_field": True}),
-        ("password", "password", {"is_field": True}),
+        (
+            "username",
+            "username",
+            {"is_field": True, "decoder": lambda v: v or None, "encoder": lambda v: v or ""},
+        ),
+        (
+            "password",
+            "password",
+            {
+                "is_field": True,
+                "decoder": lambda v: SecretStr(v) if v else None,
+                "encoder": lambda v: v.get_secret_value() if v else "",
+            },
+        ),
     ]
 
 
