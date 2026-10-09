@@ -1,14 +1,9 @@
 # Agent guide — buildarr
 
-This file is the repo's primary, tool-agnostic agent guide (read by Cursor,
-Claude Code, Copilot, Codex, etc.). It holds the repo-wide orientation; the
-bundled plugin packages have a shared nested guide.
-
-## Subsystem guides (nested AGENTS.md)
-
-- `buildarr_sonarr/AGENTS.md` — how to author/extend a bundled plugin
-  (`buildarr_sonarr` is the canonical example; `buildarr_radarr`,
-  `buildarr_prowlarr`, `buildarr_jellyseerr` follow the same shape).
+Primary agent guide for this repo. Nested guide: `buildarr_sonarr/AGENTS.md` —
+how to author/extend a bundled plugin (`buildarr_sonarr` is the canonical
+example; `buildarr_radarr`, `buildarr_prowlarr`, `buildarr_jellyseerr` follow
+the same shape).
 
 ## What this is
 
@@ -34,12 +29,10 @@ conventions over inventing new ones. The key fork-specific divergences:
   in `pyproject.toml`).
 - **Homelab CI/CD.** `.github/workflows/homelab-cicd.yml` builds the `Dockerfile`
   on push to `fork`, pushes to GHCR (`ghcr.io/<owner>/buildarr`), and bumps the
-  image tag in the `homelab-manifests` ArgoCD repo (`apps/arr-stack/values.yaml`).
+  image tag in `homelab-manifests` (Ripple awareness).
 
-**Stack:** Python 3.8+ (Docker image is 3.11), Poetry, Pydantic **v1**
-(`>=1.10,<2.0` — do not upgrade to v2), Click CLI, `stevedore` for plugin
-entry-point discovery, `requests` for *Arr APIs, `schedule` + `watchdog` for
-daemon mode, MkDocs for docs.
+**Stack:** Python 3.8+ (image 3.11), Poetry, Pydantic **v1** (do not upgrade),
+Click, `stevedore` plugin discovery, `requests`, `schedule` + `watchdog`, MkDocs.
 
 ## How to run things
 
@@ -67,9 +60,8 @@ pre-commit install && pre-commit run --all-files  # run the whole gate at once
 poetry run mkdocs serve        # preview docs/ (core docs only; plugin docs are external)
 ```
 
-There is **no `npm`/test runner here** — see Quality gate. `requirements.txt` is
-a generated export of `poetry.lock` (a pre-commit hook regenerates it); don't
-hand-edit it.
+`requirements.txt` is a generated export of `poetry.lock` (pre-commit hook);
+don't hand-edit it.
 
 ### Docker
 
@@ -79,11 +71,10 @@ docker run -d --name buildarr -v "$(pwd):/config" \
   -e PUID="$(id -u)" -e PGID="$(id -g)" buildarr:dev     # daemon (default CMD)
 ```
 
-`Dockerfile` is the fork's monorepo image (`pip install /src`, all plugins built
-in). `test.Dockerfile` is the legacy upstream-style image that `pip install`s
-plugins from PyPI at pinned versions via `scripts/bootstrap.sh` — not used by the
-fork's CI. The container runs as an unprivileged `buildarr` user created at
-runtime from `PUID`/`PGID`; `/config` is the config volume.
+`Dockerfile` is the fork's monorepo image (all plugins built in); `test.Dockerfile`
+is the legacy upstream-style image (plugins from PyPI via `scripts/bootstrap.sh`),
+unused by the fork's CI. Runs as a `buildarr` user from `PUID`/`PGID`; `/config`
+is the config volume.
 
 ## Quality gate
 
@@ -98,10 +89,9 @@ pre-commit stack — all must pass:
 4. `poetry-check` + `poetry-lock --no-update` + `poetry-export` to `requirements.txt`.
 5. Hygiene hooks: trailing-whitespace, end-of-file-fixer, detect-private-key, check-merge-conflict, large-file guard.
 
-Before declaring a change done: `pre-commit run --all-files` green, and
-`buildarr test-config` against a representative `buildarr.yml` if you touched
-config models. If you changed a config field exposed to users, also check the
-relevant `docs/`.
+Before declaring done: `pre-commit run --all-files` green, plus `buildarr
+test-config` against a representative `buildarr.yml` if you touched config
+models (and the relevant `docs/` for user-facing fields).
 
 ## Conventions
 
@@ -202,6 +192,17 @@ Add `buildarr/cli/<command>.py` with a `@cli.command`-decorated function, import
 it in `buildarr/cli/main.py`. Follow `test_config.py` for the
 load→validate→report shape.
 
+## Ripple awareness
+
+- **`homelab-manifests`** — github.com/nantomarioni/homelab-manifests — expected
+  at `../homelab-manifests`. `homelab-cicd.yml` runs
+  `yq -i '.buildarr.image.tag = …' apps/arr-stack/values.yaml` there on every
+  push to `fork`. The live `buildarr.yml` is the `buildarr.config:` block of
+  that `values.yaml`, rendered by the local subchart
+  `apps/arr-stack/charts/buildarr` (ConfigMap + Job). A config-schema change in
+  a bundled plugin ripples to that block; an image/volume/env change ripples to
+  the subchart.
+
 ## When stuck
 
 - **Buildarr usage / config schema:** upstream docs at <https://buildarr.github.io>
@@ -215,5 +216,5 @@ load→validate→report shape.
   render, reporting which stage failed.
 - **CI/deploy questions:** `.github/workflows/homelab-cicd.yml` (this fork) and
   `.github/workflows/release.yml` (upstream PyPI publish on GitHub release).
-- **Upstream contributions** target separate per-plugin repos; this fork
-  deliberately bundles them — keep fork-specific work on the `fork` branch.
+- **Upstream contributions** target separate per-plugin repos; keep
+  fork-specific work on `fork`.
