@@ -40,6 +40,7 @@ class AuthenticationMethod(BaseEnum):
     none = "none"
     basic = "basic"
     form = "forms"
+    external = "external"
 
 
 class CertificateValidation(BaseEnum):
@@ -199,6 +200,7 @@ class SecurityGeneralSettings(GeneralSettings):
     * `none` - No authentication
     * `basic` - Authentication using HTTP basic auth (browser popup)
     * `form` - Authentication using a login page
+    * `external` - External authentication using a reverse proxy (Sonarr V4 and above)
 
     Requires a restart of Sonarr to take effect.
     """
@@ -286,7 +288,7 @@ class SecurityGeneralSettings(GeneralSettings):
         Returns:
             Validated attribute value
         """
-        if values["authentication"] == AuthenticationMethod.none:
+        if values["authentication"] in (AuthenticationMethod.none, AuthenticationMethod.external):
             return None
         elif not value:
             raise ValueError("required when 'authentication' is not set to 'none'")
