@@ -29,7 +29,7 @@ from buildarr.types import NonEmptyStr
 from pydantic import Field, validator
 from typing_extensions import Annotated, Self
 
-from ....api import radarr_api_client
+from ....api import api_get, api_post, api_put, radarr_api_client
 from ....secrets import RadarrSecrets
 from ...types import RadarrConfigBase
 from ...util import language_parse
@@ -123,6 +123,14 @@ class QualityProfile(RadarrConfigBase):
     based on custom format score.
 
     This must be greater than or equal to `minimum_custom_format_score`.
+    """
+
+    minimum_custom_format_score_increment: int = Field(1, ge=1)
+    """
+    The minimum increase in custom format score a release must bring
+    for Radarr to upgrade to it.
+
+    Radarr v5+ rejects quality profiles where this is below 1.
     """
 
     custom_formats: List[CustomFormatScore] = []
@@ -281,6 +289,9 @@ class QualityProfile(RadarrConfigBase):
             ),
             ("minimum_custom_format_score", "minFormatScore", {}),
             ("upgrade_until_custom_format_score", "cutoffFormatScore", {}),
+            # Not in the radarr-py models: read raw (see `from_remote`), written raw
+            # (see `_quality_profile_body`). Absent on Radarr versions before v5.
+            ("minimum_custom_format_score_increment", "minUpgradeFormatScore", {"optional": True}),
             # TODO: Error handler for defined custom formats that don't exist.
             (
                 "custom_formats",
@@ -461,23 +472,24 @@ class QualityProfile(RadarrConfigBase):
                 1,
             )
         }
-        with radarr_api_client(secrets=secrets) as api_client:
-            radarr.QualityProfileApi(api_client).create_quality_profile(
-                quality_profile_resource=radarr.QualityProfileResource.from_dict(
-                    {
-                        "name": profile_name,
-                        **self.get_create_remote_attrs(
-                            tree,
-                            self._get_remote_map(
-                                api_qualities=api_qualities,
-                                api_customformats=api_customformats,
-                                api_languages=api_languages,
-                                group_ids=group_ids,
-                            ),
+        api_post(
+            secrets,
+            "/api/v3/qualityprofile",
+            self._quality_profile_body(
+                {
+                    "name": profile_name,
+                    **self.get_create_remote_attrs(
+                        tree,
+                        self._get_remote_map(
+                            api_qualities=api_qualities,
+                            api_customformats=api_customformats,
+                            api_languages=api_languages,
+                            group_ids=group_ids,
                         ),
-                    },
-                ),
-            )
+                    ),
+                },
+            ),
+        )
 
     def _update_remote(
         self,
@@ -509,15 +521,21 @@ class QualityProfile(RadarrConfigBase):
             set_unchanged=True,
         )
         if updated:
-            with radarr_api_client(secrets=secrets) as api_client:
-                radarr.QualityProfileApi(api_client).update_quality_profile(
-                    id=str(api_profile.id),
-                    quality_profile_resource=radarr.QualityProfileResource.from_dict(
-                        {**api_profile.to_dict(), **updated_attrs},
-                    ),
-                )
+            api_put(
+                secrets,
+                f"/api/v3/qualityprofile/{api_profile.id}",
+                self._quality_profile_body({**api_profile.to_dict(), **updated_attrs}),
+            )
             return True
         return False
+
+    def _quality_profile_body(self, attrs: Mapping[str, Any]) -> Dict[str, Any]:
+        # Round-trip through the radarr-py model to serialise the encoded
+        # attributes, then add back what the model drops.
+        return {
+            **radarr.QualityProfileResource.from_dict(attrs).to_dict(),
+            "minUpgradeFormatScore": self.minimum_custom_format_score_increment,
+        }
 
     def _delete_remote(self, secrets: RadarrSecrets, profile_id: int) -> None:
         with radarr_api_client(secrets=secrets) as api_client:
@@ -605,13 +623,13 @@ class RadarrQualityProfilesSettings(RadarrConfigBase):
 
     @classmethod
     def from_remote(cls, secrets: RadarrSecrets) -> Self:
-        with radarr_api_client(secrets=secrets) as api_client:
-            return cls(
-                definitions={
-                    api_profile.name: QualityProfile._from_remote(api_profile.to_dict())
-                    for api_profile in radarr.QualityProfileApi(api_client).list_quality_profile()
-                },
-            )
+        # Raw API response: the radarr-py model drops `minUpgradeFormatScore`.
+        return cls(
+            definitions={
+                api_profile["name"]: QualityProfile._from_remote(api_profile)
+                for api_profile in api_get(secrets, "/api/v3/qualityprofile")
+            },
+        )
 
     def update_remote(
         self,

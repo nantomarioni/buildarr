@@ -131,6 +131,114 @@ def api_get(
     return res_json
 
 
+def api_post(
+    secrets: Union[RadarrSecrets, str],
+    api_url: str,
+    req: Any = None,
+    session: Optional[requests.Session] = None,
+    use_api_key: bool = True,
+    expected_status_code: HTTPStatus = HTTPStatus.CREATED,
+) -> Any:
+    """
+    Send an API `POST` request.
+
+    Used where `radarr-py` models drop fields newer Radarr versions require.
+
+    Args:
+        secrets (Union[RadarrSecrets, str]): Secrets metadata, or host URL.
+        api_url (str): API command.
+        req (Any): Request (JSON-serialisable).
+        expected_status_code (HTTPStatus): Expected response status. Defaults to `201 Created`.
+
+    Returns:
+        Response object
+    """
+
+    if isinstance(secrets, str):
+        host_url = secrets
+        api_key = None
+    else:
+        host_url = secrets.host_url
+        api_key = secrets.api_key.get_secret_value() if use_api_key else None
+    url = f"{host_url}/{api_url.lstrip('/')}"
+
+    logger.debug("POST %s <- req=%s", url, repr(req))
+
+    if not session:
+        session = requests.Session()
+    res = session.post(
+        url,
+        headers={"X-Api-Key": api_key} if api_key else None,
+        timeout=state.request_timeout,
+        **({"json": req} if req is not None else {}),
+    )
+    try:
+        res_json = res.json()
+    except requests.JSONDecodeError:
+        api_error(method="POST", url=url, response=res)
+
+    logger.debug("POST %s -> status_code=%i res=%s", url, res.status_code, repr(res_json))
+
+    if res.status_code != expected_status_code:
+        api_error(method="POST", url=url, response=res)
+
+    return res_json
+
+
+def api_put(
+    secrets: Union[RadarrSecrets, str],
+    api_url: str,
+    req: Any,
+    session: Optional[requests.Session] = None,
+    use_api_key: bool = True,
+    expected_status_code: HTTPStatus = HTTPStatus.ACCEPTED,
+) -> Any:
+    """
+    Send an API `PUT` request.
+
+    Used where `radarr-py` models drop fields newer Radarr versions require.
+
+    Args:
+        secrets (Union[RadarrSecrets, str]): Secrets metadata, or host URL.
+        api_url (str): API command.
+        req (Any): Request (JSON-serialisable).
+        expected_status_code (HTTPStatus): Expected response status. Defaults to `202 Accepted`.
+
+    Returns:
+        Response object
+    """
+
+    if isinstance(secrets, str):
+        host_url = secrets
+        api_key = None
+    else:
+        host_url = secrets.host_url
+        api_key = secrets.api_key.get_secret_value() if use_api_key else None
+    url = f"{host_url}/{api_url.lstrip('/')}"
+
+    logger.debug("PUT %s <- req=%s", url, repr(req))
+
+    if not session:
+        session = requests.Session()
+    res = session.put(
+        url,
+        headers={"X-Api-Key": api_key} if api_key else None,
+        json=req,
+        timeout=state.request_timeout,
+    )
+    try:
+        res_json = res.json()
+    except requests.JSONDecodeError:
+        api_error(method="PUT", url=url, response=res)
+
+    logger.debug("PUT %s -> status_code=%i res=%s", url, res.status_code, repr(res_json))
+
+    if res.status_code != expected_status_code:
+        api_error(method="PUT", url=url, response=res)
+
+    return res_json
+
+
 def api_error(
     method: str,
     url: str,
