@@ -29,6 +29,7 @@ from typing_extensions import Self
 
 from ..types import SonarrApiKey, SonarrProtocol
 from .connect import SonarrConnectSettingsConfig
+from .custom_formats import SonarrCustomFormatsSettingsConfig
 from .download_clients import SonarrDownloadClientsSettingsConfig
 from .general import SonarrGeneralSettingsConfig
 from .import_lists import SonarrImportListsSettingsConfig
@@ -59,6 +60,7 @@ class SonarrSettingsConfig(SonarrConfigBase):
     """
 
     media_management = SonarrMediaManagementSettingsConfig()  # type: ignore[call-arg]
+    custom_formats = SonarrCustomFormatsSettingsConfig()
     profiles = SonarrProfilesSettingsConfig()
     quality = SonarrQualitySettingsConfig()
     indexers = SonarrIndexersSettingsConfig()  # type: ignore[call-arg]
@@ -82,6 +84,7 @@ class SonarrSettingsConfig(SonarrConfigBase):
         # 2. Qualities must be updated before quality profiles.
         # 3. Download clients must be created before indexers.
         # 4. Indexers must be created before release profiles.
+        # 5. Custom formats must be created before quality profiles score them.
         # Each section is isolated so a failure in one does not block the others.
         return resilient_update_sections(
             [
@@ -117,6 +120,13 @@ class SonarrSettingsConfig(SonarrConfigBase):
                     f"{tree}.media_management",
                     lambda: self.media_management.update_remote(
                         f"{tree}.media_management", secrets, remote.media_management,
+                        check_unmanaged=check_unmanaged,
+                    ),
+                ),
+                (
+                    f"{tree}.custom_formats",
+                    lambda: self.custom_formats.update_remote(
+                        f"{tree}.custom_formats", secrets, remote.custom_formats,
                         check_unmanaged=check_unmanaged,
                     ),
                 ),
@@ -168,6 +178,7 @@ class SonarrSettingsConfig(SonarrConfigBase):
     def delete_remote(self, tree: str, secrets: SonarrSecrets, remote: Self) -> bool:
         # Overload base function to guarantee execution order of section deletions.
         # 1. Release profiles must be deleted before indexers.
+        #    Quality profiles stop scoring custom formats before those are deleted.
         # 2. Indexers must be deleted before download clients.
         # Each section is isolated so a failure in one does not block the others.
         return resilient_update_sections(
@@ -176,6 +187,12 @@ class SonarrSettingsConfig(SonarrConfigBase):
                     f"{tree}.profiles",
                     lambda: self.profiles.delete_remote(
                         f"{tree}.profiles", secrets, remote.profiles,
+                    ),
+                ),
+                (
+                    f"{tree}.custom_formats",
+                    lambda: self.custom_formats.delete_remote(
+                        f"{tree}.custom_formats", secrets, remote.custom_formats,
                     ),
                 ),
                 (
@@ -357,6 +374,8 @@ class SonarrInstanceConfig(_SonarrInstanceConfig):
     def uses_trash_metadata(self) -> bool:
         if self.settings.quality.uses_trash_metadata():
             return True
+        if self.settings.custom_formats.uses_trash_metadata():
+            return True
         for release_profile in self.settings.profiles.release_profiles.definitions.values():
             if release_profile.uses_trash_metadata():
                 return True
@@ -375,6 +394,20 @@ class SonarrInstanceConfig(_SonarrInstanceConfig):
                 rp._render()
         if self.settings.quality.uses_trash_metadata():
             self.settings.quality._render()
+
+    def post_init_render(self, secrets: SonarrSecrets) -> Self:
+        copy = self.copy(deep=True)
+        copy._post_init_render(secrets=secrets)
+        return copy
+
+    def _post_init_render(self, secrets: SonarrSecrets) -> None:
+        # Custom format conditions from TRaSH-Guides need the instance's condition schemas,
+        # and quality profiles take default scores from the custom format definitions.
+        if self.settings.custom_formats.uses_trash_metadata():
+            self.settings.custom_formats._post_init_render(secrets=secrets)
+        self.settings.profiles.quality_profiles._render(
+            custom_formats=self.settings.custom_formats.definitions,
+        )
 
     @classmethod
     def from_remote(cls, secrets: SonarrSecrets) -> Self:

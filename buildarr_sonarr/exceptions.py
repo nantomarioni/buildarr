@@ -40,6 +40,22 @@ class SonarrAPIError(SonarrError):
         super().__init__(msg)
 
 
+class SonarrConfigError(SonarrError):
+    """
+    Sonarr plugin configuration exception base class.
+    """
+
+    pass
+
+
+class SonarrConfigUnsupportedError(SonarrConfigError):
+    """
+    Error raised when Buildarr attemps to manage an unsupported remote instance resource type.
+    """
+
+    pass
+
+
 class SonarrSecretsError(SonarrError):
     """
     Sonarr plugin secrets exception base class.
