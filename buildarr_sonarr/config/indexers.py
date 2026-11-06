@@ -60,6 +60,11 @@ class NabCategory(BaseEnum):
     TV_ANIME = (5070, "TV/Anime")
     TV_DOCUMENTARY = (5080, "TV/Documentary")
     TV_X265 = (5090, "TV/x265")
+    # Prowlarr returns uncategorised releases as Other (8000) and syncs that
+    # category to Sonarr once the app allows it.
+    OTHER = (8000, "Other")
+    OTHER_MISC = (8010, "Other/Misc")
+    OTHER_HASHED = (8020, "Other/Hashed")
 
     @classmethod
     def decode(cls, value: int) -> Union[Self, int]:
@@ -403,7 +408,7 @@ class NewznabIndexer(UsenetIndexer):
     (e.g. `TV-WEBDL`). The old values can still be used.
     """
 
-    anime_categories: Set[NabCategory] = set()
+    anime_categories: Set[Union[NabCategory, int]] = set()
     """
     Categories to monitor for anime.
     Define as empty to disable.
@@ -886,7 +891,7 @@ class TorznabIndexer(TorrentIndexer):
     API key for use with the Torznab API.
     """
 
-    categories: Set[NabCategory] = {NabCategory.TV_SD, NabCategory.TV_HD}
+    categories: Set[Union[NabCategory, int]] = {NabCategory.TV_SD, NabCategory.TV_HD}
     """
     Categories to monitor for standard/daily shows.
     Define as empty to disable.
@@ -910,7 +915,7 @@ class TorznabIndexer(TorrentIndexer):
     (e.g. `TV-WEBDL`). The old values can still be used.
     """
 
-    anime_categories: Set[NabCategory] = set()
+    anime_categories: Set[Union[NabCategory, int]] = set()
     """
     Categories to monitor for anime.
 
