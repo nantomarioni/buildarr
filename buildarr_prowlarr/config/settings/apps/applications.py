@@ -146,7 +146,7 @@ class Application(ProwlarrConfigBase):
         cls,
         api_schema: prowlarr.ApplicationResource,
     ) -> Dict[int, str]:
-        return {
+        options: Dict[int, str] = {
             select_option.value: select_option.name.lower()
             for select_option in cast(
                 List[prowlarr.SelectOption],
@@ -158,6 +158,21 @@ class Application(ProwlarrConfigBase):
                     ),
                 ).select_options,
             )
+        }
+        # Prowlarr offers two categories named "Other" (ids 0 and 8000), and
+        # likewise "Other/Misc" (10, 8010) and "Other/Hashed" (20, 8020).
+        # Indexers without categories (RuTor, TorrentsCSV) return 8000, the
+        # Newznab standard id, so the plain name belongs to the highest id and
+        # the duplicates carry their id, e.g. "other (0)". Before, "other"
+        # resolved to whichever duplicate the schema listed last (0), and the
+        # app never received the 8000 results.
+        values_by_name: Dict[str, List[int]] = {}
+        for value, name in options.items():
+            values_by_name.setdefault(name, []).append(value)
+        return {
+            value: (name if value == max(values) else f"{name} ({value})")
+            for name, values in values_by_name.items()
+            for value in values
         }
 
     @classmethod
@@ -718,6 +733,11 @@ class ApplicationsSettings(ProwlarrConfigBase):
                 tags:
                   - "movies"
     ```
+
+    Category names are matched case-insensitively against the names Prowlarr offers.
+    Prowlarr has two categories called `Other` (ids 0 and 8000): `Other` is 8000,
+    the Newznab standard one that indexers without categories (e.g. RuTor) return;
+    the legacy id 0 is `Other (0)` (and `Other/Misc (10)`, `Other/Hashed (20)`).
 
     For more information on configuring application links in Prowlarr,
     refer to the [guide for applications](https://wiki.servarr.com/prowlarr/settings#applications)
