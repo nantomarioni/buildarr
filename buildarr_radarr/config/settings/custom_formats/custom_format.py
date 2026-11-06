@@ -294,6 +294,18 @@ class CustomFormat(RadarrConfigBase):
                     ),
                 )
                 changed = True
+            elif not isinstance(remote.conditions[condition_name], type(condition)):
+                # The condition changed type under the same name, so the remote object
+                # has none of the new type's attributes to diff against: replace it in full.
+                logger.info("%s: (...) -> (recreated as %s)", condition_tree, condition.type)
+                api_condition_dicts.append(
+                    condition._create_remote(
+                        tree=condition_tree,
+                        api_schema_dict=api_condition_schema_dicts[condition._implementation],
+                        condition_name=condition_name,
+                    ),
+                )
+                changed = True
             else:
                 condition_changed, api_condition_dict = condition._update_remote(
                     tree=condition_tree,
